@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -57,7 +57,11 @@ func (a *App) getCombinedFlagInfo(flagName string) (*CombinedFlagInfo, error) {
 	// 3. Salvar no Cache
 	jsonData, err := json.Marshal(info)
 	if err == nil {
-		a.RedisClient.Set(ctx, cacheKey, jsonData, CACHE_TTL).Err()
+		// a.RedisClient.Set(ctx, cacheKey, jsonData, CACHE_TTL).Err()
+		// Trata possíveis erros ao armazenar os dados no Redis (golangci-lint: errcheck).
+		if err := a.RedisClient.Set(ctx, cacheKey, jsonData, CACHE_TTL).Err(); err != nil {
+			log.Printf("Erro ao salvar flag '%s' no cache Redis: %v", flagName, err)
+		}
 	}
 
 	return info, nil
@@ -111,7 +115,13 @@ func (a *App) fetchFlag(flagName string) (*Flag, error) {
 	if err != nil {
 		return nil, fmt.Errorf("erro ao chamar flag-service: %w", err)
 	}
-	defer resp.Body.Close()
+	// defer resp.Body.Close()
+	// Trata possíveis erros ao fechar a resposta HTTP (golangci-lint: errcheck).
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Erro ao fechar resposta HTTP: %v", err)
+		}
+	}()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, &NotFoundError{flagName}
@@ -120,7 +130,12 @@ func (a *App) fetchFlag(flagName string) (*Flag, error) {
 		return nil, fmt.Errorf("flag-service retornou status %d", resp.StatusCode)
 	}
 
-	body, _ := ioutil.ReadAll(resp.Body)
+	// body, _ := ioutil.ReadAll(resp.Body)
+	// Utiliza io.ReadAll e trata possíveis erros na leitura da resposta HTTP.
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("erro ao ler resposta HTTP: %w", err)
+	}
 	var flag Flag
 	if err := json.Unmarshal(body, &flag); err != nil {
 		return nil, fmt.Errorf("erro ao desserializar resposta do flag-service: %w", err)
@@ -138,7 +153,13 @@ func (a *App) fetchRule(flagName string) (*TargetingRule, error) {
 	if err != nil {
 		return nil, fmt.Errorf("erro ao chamar targeting-service: %w", err)
 	}
-	defer resp.Body.Close()
+	// defer resp.Body.Close()
+	// Trata possíveis erros ao fechar a resposta HTTP (golangci-lint: errcheck).
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Erro ao fechar resposta HTTP: %v", err)
+		}
+	}()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, &NotFoundError{flagName} // Não é um erro fatal
@@ -147,7 +168,12 @@ func (a *App) fetchRule(flagName string) (*TargetingRule, error) {
 		return nil, fmt.Errorf("targeting-service retornou status %d", resp.StatusCode)
 	}
 
-	body, _ := ioutil.ReadAll(resp.Body)
+	// body, _ := ioutil.ReadAll(resp.Body)
+	// Utiliza io.ReadAll e trata possíveis erros na leitura da resposta HTTP.
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("erro ao ler resposta HTTP: %w", err)
+	}
 	var rule TargetingRule
 	if err := json.Unmarshal(body, &rule); err != nil {
 		return nil, fmt.Errorf("erro ao desserializar resposta do targeting-service: %w", err)
