@@ -110,7 +110,9 @@ func (a *App) fetchFlag(ctx context.Context, flagName string) (*Flag, error) {
 
 	apiKey := os.Getenv("SERVICE_API_KEY")
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-    if err != nil { return nil, fmt.Errorf("erro ao preparar requisição HTTP: %w", err) }
+	if err != nil {
+		return nil, fmt.Errorf("erro ao preparar requisição HTTP: %w", err)
+	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
 	resp, err := a.HttpClient.Do(req)
@@ -149,7 +151,9 @@ func (a *App) fetchRule(ctx context.Context, flagName string) (*TargetingRule, e
 	url := fmt.Sprintf("%s/rules/%s", a.TargetingServiceURL, flagName)
 	apiKey := os.Getenv("SERVICE_API_KEY") // Usa a mesma chave
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-    if err != nil { return nil, fmt.Errorf("erro ao preparar requisição HTTP: %w", err) }
+	if err != nil {
+		return nil, fmt.Errorf("erro ao preparar requisição HTTP: %w", err)
+	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
 	resp, err := a.HttpClient.Do(req)

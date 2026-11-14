@@ -1,10 +1,10 @@
 package main
 
 import (
-	"go.opentelemetry.io/otel/propagation"
-	"go.opentelemetry.io/otel"
 	"context"
 	"encoding/json"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 	"log"
 	"time"
 
@@ -41,29 +41,29 @@ func (a *App) sendEvaluationEvent(ctx context.Context, userID, flagName string, 
 		return
 	}
 
-    // Envio assíncrono com prazo próprio, mantendo a propagação do trace.
-    ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-    defer cancel()
-    // Preserva o traceparent nos atributos da mensagem, sem incluir credenciais.
-    ctx, span := otel.Tracer("evaluation-service").Start(ctx, "sqs.send")
-    defer span.End()
-    carrier := propagation.MapCarrier{}
-    otel.GetTextMapPropagator().Inject(ctx, carrier)
-    attrs := make(map[string]*sqs.MessageAttributeValue)
-    for _, key := range []string{"traceparent", "tracestate"} {
-        if value := carrier.Get(key); value != "" {
-            attrs[key] = &sqs.MessageAttributeValue{
-                DataType: aws.String("String"),
-                StringValue: aws.String(value),
-            }
-        }
-    }
+	// Envio assíncrono com prazo próprio, mantendo a propagação do trace.
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	// Preserva o traceparent nos atributos da mensagem, sem incluir credenciais.
+	ctx, span := otel.Tracer("evaluation-service").Start(ctx, "sqs.send")
+	defer span.End()
+	carrier := propagation.MapCarrier{}
+	otel.GetTextMapPropagator().Inject(ctx, carrier)
+	attrs := make(map[string]*sqs.MessageAttributeValue)
+	for _, key := range []string{"traceparent", "tracestate"} {
+		if value := carrier.Get(key); value != "" {
+			attrs[key] = &sqs.MessageAttributeValue{
+				DataType:    aws.String("String"),
+				StringValue: aws.String(value),
+			}
+		}
+	}
 
-    // Envia a mensagem com o contexto, mantendo o trace distribuído.
-    _, err = a.SqsSvc.SendMessageWithContext(ctx, &sqs.SendMessageInput{
-        MessageAttributes: attrs,
-		MessageBody: aws.String(string(body)),
-		QueueUrl:    aws.String(a.SqsQueueURL),
+	// Envia a mensagem com o contexto, mantendo o trace distribuído.
+	_, err = a.SqsSvc.SendMessageWithContext(ctx, &sqs.SendMessageInput{
+		MessageAttributes: attrs,
+		MessageBody:       aws.String(string(body)),
+		QueueUrl:          aws.String(a.SqsQueueURL),
 	})
 
 	if err != nil {

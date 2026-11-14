@@ -1,10 +1,10 @@
 package main
 
 import (
-	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/attribute"
 	"context"
 	"encoding/json"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"log"
 	"net/http"
 )
@@ -55,10 +55,10 @@ func (a *App) evaluationHandler(w http.ResponseWriter, r *http.Request) {
 	// Isso não bloqueia a resposta para o cliente.
 	go a.sendEvaluationEvent(context.WithoutCancel(r.Context()), userID, flagName, result)
 
-    a.EvaluationCounter.Add(r.Context(), 1,
-        metric.WithAttributes(attribute.Bool("enabled", result)))
+	a.EvaluationCounter.Add(r.Context(), 1,
+		metric.WithAttributes(attribute.Bool("enabled", result)))
 
-    // 4. Retornar a resposta
+	// 4. Retornar a resposta
 	w.WriteHeader(http.StatusOK)
 	// json.NewEncoder(w).Encode(EvaluationResponse{
 	// 	FlagName: flagName,
