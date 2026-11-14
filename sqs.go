@@ -1,6 +1,9 @@
 package main
 
 import (
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel"
+	"context"
 	"encoding/json"
 	"log"
 	"time"
@@ -18,10 +21,10 @@ type EvaluationEvent struct {
 }
 
 // sendEvaluationEvent envia um evento para a fila SQS
-func (a *App) sendEvaluationEvent(userID, flagName string, result bool) {
+func (a *App) sendEvaluationEvent(ctx context.Context, userID, flagName string, result bool) {
 	// Se a URL da fila não foi configurada, apenas loga localmente e sai.
 	if a.SqsSvc == nil || a.SqsQueueURL == "" {
-		log.Printf("[SQS_DISABLED] Evento: User '%s', Flag '%s', Result '%t'", userID, flagName, result)
+		log.Printf("[SQS_DISABLED] Evento não publicado (Flag: %s, Result: %t)", flagName, result)
 		return
 	}
 
@@ -38,8 +41,27 @@ func (a *App) sendEvaluationEvent(userID, flagName string, result bool) {
 		return
 	}
 
-	// Envia a mensagem
-	_, err = a.SqsSvc.SendMessage(&sqs.SendMessageInput{
+    // Envio assíncrono com prazo próprio, mantendo a propagação do trace.
+    ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+    defer cancel()
+    // Preserva o traceparent nos atributos da mensagem, sem incluir credenciais.
+    ctx, span := otel.Tracer("evaluation-service").Start(ctx, "sqs.send")
+    defer span.End()
+    carrier := propagation.MapCarrier{}
+    otel.GetTextMapPropagator().Inject(ctx, carrier)
+    attrs := make(map[string]*sqs.MessageAttributeValue)
+    for _, key := range []string{"traceparent", "tracestate"} {
+        if value := carrier.Get(key); value != "" {
+            attrs[key] = &sqs.MessageAttributeValue{
+                DataType: aws.String("String"),
+                StringValue: aws.String(value),
+            }
+        }
+    }
+
+    // Envia a mensagem com o contexto, mantendo o trace distribuído.
+    _, err = a.SqsSvc.SendMessageWithContext(ctx, &sqs.SendMessageInput{
+        MessageAttributes: attrs,
 		MessageBody: aws.String(string(body)),
 		QueueUrl:    aws.String(a.SqsQueueURL),
 	})

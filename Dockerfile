@@ -24,6 +24,7 @@ RUN go mod download
 COPY evaluator.go .
 COPY handlers.go .
 COPY main.go .
+COPY telemetry.go .
 COPY sqs.go .
 COPY types.go .
 

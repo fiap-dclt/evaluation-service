@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 	"log"
 	"net/http"
 	"os"
@@ -25,10 +28,23 @@ type App struct {
 	HttpClient          *http.Client
 	FlagServiceURL      string
 	TargetingServiceURL string
+	EvaluationCounter   metric.Int64Counter
 }
 
 func main() {
 	_ = godotenv.Load() // Carrega .env para dev local
+
+	shutdownTelemetry, err := setupTelemetry(context.Background(), "evaluation-service")
+	if err != nil {
+		log.Fatalf("Falha ao iniciar OpenTelemetry: %v", err)
+	}
+	defer func() {
+		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := shutdownTelemetry(stopCtx); err != nil {
+			log.Printf("Erro ao finalizar OpenTelemetry: %v", err)
+		}
+	}()
 
 	// --- Configuração ---
 	port := os.Getenv("PORT")
@@ -87,7 +103,14 @@ func main() {
 
 	// Cliente HTTP (com timeout)
 	httpClient := &http.Client{
-		Timeout: 5 * time.Second,
+		Timeout:   5 * time.Second,
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
+
+	// Contador de avaliações com atributo de baixa cardinalidade.
+	evaluationCounter, err := otel.Meter("evaluation-service").Int64Counter("togglemaster.evaluations")
+	if err != nil {
+		log.Fatalf("Erro ao criar métrica de avaliações: %v", err)
 	}
 
 	// Cria a instância da App
@@ -98,6 +121,7 @@ func main() {
 		HttpClient:          httpClient,
 		FlagServiceURL:      flagSvcURL,
 		TargetingServiceURL: targetingSvcURL,
+		EvaluationCounter:   evaluationCounter,
 	}
 
 	// --- Rotas ---
@@ -106,7 +130,11 @@ func main() {
 	mux.HandleFunc("/evaluate", app.evaluationHandler)
 
 	log.Printf("Serviço de Avaliação (Go) rodando na porta %s", port)
-	if err := http.ListenAndServe(":"+port, mux); err != nil {
+	if err := http.ListenAndServe(":"+port, otelhttp.NewHandler(
+		mux, "http.server", otelhttp.WithFilter(func(r *http.Request) bool {
+			return r.URL.Path != "/health"
+		}),
+	)); err != nil {
 		log.Fatal(err)
 	}
 }
